@@ -25,9 +25,25 @@ jobs:
           go-version: stable
           cache: true
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Clone zrok
         run: |
           git clone --depth=1 https://github.com/openziti/zrok.git "$RUNNER_TEMP/zrok"
+
+      - name: Show UI Structure
+        working-directory: ${{ runner.temp }}/zrok
+        run: |
+          echo "===== UI ====="
+          ls -la ui || true
+          ls -la agent/agentUi || true
+
+          echo "===== package.json ====="
+          cat ui/package.json || true
+          cat agent/agentUi/package.json || true
 
       - name: Show Environment
         run: |
@@ -42,6 +58,29 @@ jobs:
           echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
           echo "CC=$(xcrun --sdk iphoneos -f clang)" >> $GITHUB_ENV
           echo "CXX=$(xcrun --sdk iphoneos -f clang++)" >> $GITHUB_ENV
+
+      - name: Build UI
+        working-directory: ${{ runner.temp }}/zrok/ui
+        run: |
+          npm install
+          npm run build
+
+      - name: Build Agent UI
+        working-directory: ${{ runner.temp }}/zrok/agent/agentUi
+        run: |
+          if [ -f package.json ]; then
+            npm install
+            npm run build
+          else
+            echo "No Agent UI package.json"
+          fi
+
+      - name: Verify dist
+        working-directory: ${{ runner.temp }}/zrok
+        run: |
+          find . -type d -name dist
+          ls -la ui/dist || true
+          ls -la agent/agentUi/dist || true
 
       - name: Download Dependencies
         working-directory: ${{ runner.temp }}/zrok
