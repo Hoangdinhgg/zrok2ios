@@ -1,16 +1,13 @@
-name: Build zrok iOS
+name: Build zrok2 iOS
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-ios:
+  build:
     runs-on: macos-latest
 
     env:
@@ -19,20 +16,18 @@ jobs:
       CGO_ENABLED: "1"
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.5"
+          go-version: stable
           cache: true
 
       - name: Clone zrok
         run: |
-          git clone --depth=1 https://github.com/openziti/zrok.git
-          cd zrok
-          git submodule update --init --recursive
+          git clone --depth=1 https://github.com/openziti/zrok.git "$RUNNER_TEMP/zrok"
 
       - name: Show Environment
         run: |
@@ -42,50 +37,53 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-path
           xcrun --sdk iphoneos -f clang
 
-      - name: Install dependencies
-        working-directory: zrok
-        run: |
-          go mod download
-          go mod tidy
-
-      - name: Configure iOS SDK
+      - name: Configure SDK
         run: |
           echo "SDKROOT=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
           echo "CC=$(xcrun --sdk iphoneos -f clang)" >> $GITHUB_ENV
           echo "CXX=$(xcrun --sdk iphoneos -f clang++)" >> $GITHUB_ENV
 
-      - name: Build
-        working-directory: zrok
+      - name: Download Dependencies
+        working-directory: ${{ runner.temp }}/zrok
         run: |
-          export SDKROOT="$SDKROOT"
-          export CC="$CC"
-          export CXX="$CXX"
+          go mod download
+          go mod tidy
 
+      - name: List Packages
+        working-directory: ${{ runner.temp }}/zrok
+        run: |
+          pwd
+          go list ./...
+
+      - name: Build
+        working-directory: ${{ runner.temp }}/zrok
+        run: |
           go build \
             -v \
             -x \
             -trimpath \
             -buildvcs=false \
             -ldflags="-s -w" \
-            -o zrok-ios \
-            ./cmd/zrok
+            -o zrok2-ios \
+            ./cmd/zrok2
 
-      - name: Inspect Binary
+      - name: Inspect
+        if: always()
+        working-directory: ${{ runner.temp }}/zrok
         run: |
-          file zrok/zrok-ios || true
-          otool -hv zrok/zrok-ios || true
-          otool -L zrok/zrok-ios || true
+          file zrok2-ios || true
+          otool -hv zrok2-ios || true
+          otool -L zrok2-ios || true
 
-      - name: Upload Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: zrok-ios
-          path: zrok/zrok-ios
+      - name: Prepare Artifact
+        if: always()
+        run: |
+          mkdir -p output
+          cp "$RUNNER_TEMP/zrok/zrok2-ios" output/ 2>/dev/null || true
 
-      - name: Upload Build Logs
+      - name: Upload Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: logs
-          path: |
-            ~/Library/Logs
+          name: zrok2-ios
+          path: output
